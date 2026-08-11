@@ -1,0 +1,70 @@
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports: ["${API_GATEWAY_PORT:-8080}:8080"]
+    environment:
+      PORT: 8080
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL}
+      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      PAYMENT_SERVICE_URL: ${PAYMENT_SERVICE_URL}
+    depends_on:
+      auth-service: { condition: service_healthy }
+      product-service: { condition: service_healthy }
+      order-service: { condition: service_healthy }
+      payment-service: { condition: service_healthy }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"], interval: 10s, timeout: 5s, retries: 5, start_period: 15s }
+  auth-service:
+    build: ./auth-service
+    environment:
+      PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      AUTH_DATABASE_URL: ${AUTH_DATABASE_URL}
+    depends_on: { auth-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"], interval: 10s, timeout: 5s, retries: 5, start_period: 15s }
+  product-service:
+    build: ./product-service
+    environment:
+      PORT: 3002
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      PRODUCT_DATABASE_URL: ${PRODUCT_DATABASE_URL}
+    depends_on: { product-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"], interval: 10s, timeout: 5s, retries: 5, start_period: 15s }
+  order-service:
+    build: ./order-service
+    environment:
+      PORT: 3003
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      PRODUCT_SERVICE_URL: ${PRODUCT_SERVICE_URL}
+      ORDER_DATABASE_URL: ${ORDER_DATABASE_URL}
+    depends_on: { order-db: { condition: service_healthy }, product-service: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:3003/health"], interval: 10s, timeout: 5s, retries: 5, start_period: 15s }
+  payment-service:
+    build: ./payment-service
+    environment:
+      PORT: 3004
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      PAYMENT_DATABASE_URL: ${PAYMENT_DATABASE_URL}
+    depends_on: { payment-db: { condition: service_healthy }, order-service: { condition: service_healthy } }
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:3004/health"], interval: 10s, timeout: 5s, retries: 5, start_period: 15s }
+  auth-db: &db
+    image: postgres:14-alpine
+    environment: { POSTGRES_USER: auth, POSTGRES_PASSWORD: auth, POSTGRES_DB: auth }
+    volumes: [auth-data:/var/lib/postgresql/data, ./auth-service/seeds:/docker-entrypoint-initdb.d:ro]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 5s, timeout: 3s, retries: 10 }
+  product-db:
+    <<: *db
+    environment: { POSTGRES_USER: product, POSTGRES_PASSWORD: product, POSTGRES_DB: product }
+    volumes: [product-data:/var/lib/postgresql/data]
+  order-db:
+    <<: *db
+    environment: { POSTGRES_USER: order, POSTGRES_PASSWORD: order, POSTGRES_DB: order }
+    volumes: [order-data:/var/lib/postgresql/data]
+  payment-db:
+    <<: *db
+    environment: { POSTGRES_USER: payment, POSTGRES_PASSWORD: payment, POSTGRES_DB: payment }
+    volumes: [payment-data:/var/lib/postgresql/data]
+volumes: { auth-data: {}, product-data: {}, order-data: {}, payment-data: {} }

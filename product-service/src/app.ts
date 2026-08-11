@@ -1,0 +1,12 @@
+import express from 'express';
+type Product={id:string,name:string,description:string,price:number,stock:number}; const products=new Map<string,Product>();
+export const app=express(); app.use(express.json());
+app.use((req,res,next)=>{const correlationId=req.header('X-Request-ID')||crypto.randomUUID();res.setHeader('X-Request-ID',correlationId);console.log(JSON.stringify({level:'info',service:'product-service',message:req.method+' '+req.path,correlationId}));if(req.path!='/health'&&req.header('X-Internal-Service-Key')!==(process.env.INTERNAL_SERVICE_KEY||'development-internal-service-key'))return res.status(403).json({error:'forbidden'});next();});
+const valid=(b:any)=>b&&typeof b.name==='string'&&typeof b.description==='string'&&Number.isFinite(b.price)&&Number.isInteger(b.stock)&&b.price>=0&&b.stock>=0;
+app.get('/health',(_q,r)=>r.json({status:'ok',service:'product-service'})); app.get('/products',(_q,r)=>r.json([...products.values()]));
+app.post('/products',(q,r)=>{if(!valid(q.body))return r.status(400).json({error:'invalid product'});const p={id:crypto.randomUUID(),...q.body};products.set(p.id,p);r.status(201).json(p)});
+app.get('/products/:id',(q,r)=>{const p=products.get(q.params.id);return p?r.json(p):r.status(404).json({error:'not found'})});
+app.put('/products/:id',(q,r)=>{const p=products.get(q.params.id);if(!p)return r.status(404).json({error:'not found'});if(!valid(q.body))return r.status(400).json({error:'invalid product'});const next={id:p.id,...q.body};products.set(p.id,next);r.json(next)});
+app.delete('/products/:id',(q,r)=>products.delete(q.params.id)?r.status(204).end():r.status(404).json({error:'not found'}));
+app.post('/products/reserve',(q,r)=>{const items=q.body?.items;if(!Array.isArray(items)||!items.length)return r.status(400).json({error:'items required'});for(const i of items){const p=products.get(i.productId);if(!p||!Number.isInteger(i.quantity)||i.quantity<1||p.stock<i.quantity)return r.status(400).json({error:'insufficient stock'});}items.forEach(i=>{const p=products.get(i.productId)!;p.stock-=i.quantity});r.json({reserved:true});});
+app.post('/products/release',(q,r)=>{for(const i of q.body?.items||[]){const p=products.get(i.productId);if(p)p.stock+=i.quantity;}r.json({released:true});});
