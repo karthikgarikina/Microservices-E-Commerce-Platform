@@ -85,5 +85,10 @@ docker compose logs api-gateway order-service product-service | grep 'demo-order
 # Stop without erasing databases; use -v only when intentionally resetting data
 docker compose down
 ```
+---
+## Video Demo
 
+https://youtu.be/niUkcNhNOow
+
+---
 The gateway enforces 20 requests per minute per IP and returns 429 plus rate-limit headers on request 21. It validates protected JWTs by calling `auth-service /auth/validate`; it does not merely decode them. The gateway adds `X-Internal-Service-Key` to every upstream request, while product/order/payment reject direct requests missing that key. `X-Request-ID` is forwarded through service-to-service calls and emitted as `correlationId` in structured JSON logs.
